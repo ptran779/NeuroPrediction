@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 # prepare the data
 # read in data
-data = pd.read_csv("../resource/train_data.csv")
+data = pd.read_csv("../resource/train_data2.csv")
 
 # load in additional features for each neuron
 feature_weights = pd.read_csv("../resource/feature_weights.csv")
@@ -67,15 +67,15 @@ pairs1 = set()
 pairs2 = {}
 c = 0
 for index, row in data.iterrows():
-    pairs1.add((row['pre_nucleus_x'], row['pre_nucleus_y']))
-    pairs1.add((row['post_nucleus_x'], row['post_nucleus_y']))
+    pairs1.add((row['pre_nucleus_x'], row['pre_nucleus_y'], row['pre_nucleus_z']))
+    pairs1.add((row['post_nucleus_x'], row['post_nucleus_y'], row['post_nucleus_z']))
 for index, row in linkedDat.iterrows():
     tmp = (row['pre_nucleus_id'], row['post_nucleus_id'])
     if tmp in pairs2:
         c += 1
-        print("{} has duplicated connection".format(tmp))
     else:
-        pairs2[tmp] = (row['pre_nucleus_x'], row['pre_nucleus_y'], row['post_nucleus_x'], row['post_nucleus_y'])
+        pairs2[tmp] = (row['pre_nucleus_x'], row['post_nucleus_x'], row['pre_nucleus_y'], row['post_nucleus_y'],
+                       row['pre_nucleus_z'], row['post_nucleus_z'])
 
 
 def color_nodes(G):
@@ -103,19 +103,27 @@ def color_nodes(G):
 # Map non-filter direct neuron
 G1 = nx.DiGraph()
 for i in pairs2:  # add all pre and post to map
-    G1.add_node(i[0], pos=(pairs2[i][0], pairs2[i][1]))
-    G1.add_node(i[1], pos=(pairs2[i][2], pairs2[i][3]))
+    G1.add_node(i[0], XY=(pairs2[i][0], pairs2[i][2]), XZ=(pairs2[i][0], pairs2[i][4]))
+    G1.add_node(i[1], XY=(pairs2[i][1], pairs2[i][3]), XZ=(pairs2[i][1], pairs2[i][5]))
     G1.add_edge(i[0], i[1])
 
 x = []
 y = []
+z = []
 for i in pairs1:
     x.append(i[0])
     y.append(i[1])
+    z.append(i[2])
 plt.figure()
-
 plt.scatter(x, y, color='pink')
 colors = color_nodes(G1)
-pos = nx.get_node_attributes(G1, 'pos')
-nx.draw(G1, pos=pos, node_color=colors, node_size=20)
+XY = nx.get_node_attributes(G1, 'XY')
+nx.draw(G1, pos=XY, node_color=colors, node_size=20)
+plt.show()
+
+plt.figure()
+plt.scatter(x, z, color='pink')
+colors = color_nodes(G1)
+XZ = nx.get_node_attributes(G1, 'XZ')
+nx.draw(G1, pos=XZ, node_color=colors, node_size=20)
 plt.show()
