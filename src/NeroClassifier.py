@@ -89,8 +89,59 @@ data = (
     )
 )
 
+############################ Adding the cosine similarity column##################### BEN
+#cosine similarity function
+def row_feature_similarity(row):
+    pre = row["pre_feature_weights"]
+    post = row["post_feature_weights"]
+    return (pre * post).sum() / (np.linalg.norm(pre) * np.linalg.norm(post))
+
+# compute the cosine similarity between the pre- and post- feature weights
+data["fw_similarity"] = data.apply(row_feature_similarity, axis=1)
+
+#####################################################################################
+
+#################################################### BENEDICT: You probably should modify this to fit the data
+# # Apply PCA to data
+# from sklearn.preprocessing import StandardScaler
+# from sklearn.decomposition import PCA
+
+# # Exclude non-numeric and non-categorical columns from the PCA - I guess you don't have any here. So you can remove this part
+# exclude_cols = ['ID', 
+#                 'pre_feature_weights', 
+#                 'post_feature_weights', 
+#                 'pre_morph_embeddings', 
+#                 'post_morph_embeddings', 
+#                 'projection_group', 
+#                 'connected',
+#                 'is_left',
+#                 'is_right',
+#                 'is_above',
+#                 'is_below'
+#                ]
+
+
+# # Select only numeric columns for PCA
+# numeric_columns = [col for col in data.columns if col not in exclude_cols]
+# pca_num_of_components = 45 # chosen from explained variance plot. It had more feature though
+
+# # Standardize the data (if needed)
+# scaler = StandardScaler()
+# data[numeric_columns] = scaler.fit_transform(data[numeric_columns])
+
+# # Create a PCA object
+# pca = PCA(n_components=pca_num_of_components)
+
+# # Fit and transform the data
+# pca_result = pca.fit_transform(data[numeric_columns])
+
+
+######################################################
+
+
 # split data to train and test set
 train_df, test_df = train_test_split(data, train_size=TRN_TST_RATIO, random_state=0)
+
 
 
 def process_df(raw_df):
@@ -222,14 +273,5 @@ def plot_metrics(history):
 
 plot_metrics(history)
 print(history_val.history)
-# keras.metrics.BinaryCrossentropy(name='cross entropy'),  # same as model's loss
-# keras.metrics.MeanSquaredError(name='Brier score'),
-# keras.metrics.TruePositives(name='tp'),
-# keras.metrics.FalsePositives(name='fp'),
-# keras.metrics.TrueNegatives(name='tn'),
-# keras.metrics.FalseNegatives(name='fn'),
-# keras.metrics.BinaryAccuracy(name='accuracy'),
-# keras.metrics.Precision(name='precision'),
-# keras.metrics.Recall(name='recall'),
-# keras.metrics.AUC(name='auc'),
-# keras.metrics.AUC(name='prc', curve='PR'),  # precision-recall curve
+
+
