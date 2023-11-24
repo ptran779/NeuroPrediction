@@ -127,3 +127,6 @@ colors = color_nodes(G1)
 XZ = nx.get_node_attributes(G1, 'XZ')
 nx.draw(G1, pos=XZ, node_color=colors, node_size=20)
 plt.show()
+
+
+plt.figure()

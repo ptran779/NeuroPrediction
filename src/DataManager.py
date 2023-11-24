@@ -81,9 +81,9 @@ class DataManager:
         dm1, dm2 = len(self._dat_main['pre_morph_embeddings'][0]), len(self._dat_main['post_morph_embeddings'][0])
         for i, r in self._dat_main.iterrows():
             if isinstance(r['pre_morph_embeddings'], float):
-                self._dat_main.at[i, 'pre_morph_embeddings'] = np.zeros(dm1)
+                self._dat_main.at[i, 'pre_morph_embeddings'] = np.full(dm1, 0.001)
             if isinstance(r['post_morph_embeddings'], float):
-                self._dat_main.at[i, 'post_morph_embeddings'] = np.zeros(dm2)
+                self._dat_main.at[i, 'post_morph_embeddings'] = np.full(dm2, 0.001)
 
     def load_dat_lboard(self, fname: str):
         if not self.dataIsLoadedDat():
@@ -121,9 +121,9 @@ class DataManager:
         dm1, dm2 = len(self._dat_lboard['pre_morph_embeddings'][0]), len(self._dat_lboard['post_morph_embeddings'][0])
         for i, r in self._dat_lboard.iterrows():
             if isinstance(r['pre_morph_embeddings'], float):
-                self._dat_lboard.at[i, 'pre_morph_embeddings'] = np.zeros(dm1)
+                self._dat_lboard.at[i, 'pre_morph_embeddings'] = np.full(dm1, 0.001)
             if isinstance(r['post_morph_embeddings'], float):
-                self._dat_lboard.at[i, 'post_morph_embeddings'] = np.zeros(dm2)
+                self._dat_lboard.at[i, 'post_morph_embeddings'] = np.full(dm2, 0.001)
 
     def dataIsLoadedDat(self):
         return not (self._dat_morp is None or self._dat_feat is None)
@@ -146,13 +146,15 @@ class DataManager:
         resampled_ds = tf.data.Dataset.sample_from_datasets([pos_ds, neg_ds], weights=[.5, .5])
 
         self._train_ds = resampled_ds.batch(self.BATCH_SIZE).prefetch(2)
+        # self._train_ds = self.makeDs(f_trn, l_trn)  # test without rebalancing
+        # self._train_ds = pos_ds.batch(self.BATCH_SIZE).prefetch(2)  # train with just positive to offset the balance
         self.step_per_epoch = np.ceil(2.0 * (len(l_trn) - np.count_nonzero(l_trn)) / self.BATCH_SIZE)
 
         self._val_ds = self.makeDs(f_val, l_val)
         self._test_ds = self.makeDs(f_tst, l_tst)
 
     def loadLeader(self):
-        self.lea_ds, _ = self.processFromDf(self._dat_lboard)
+        self.lea_ds, _ = self.processFromDf(self._dat_lboard, skip_y=1)
 
     def getTrainDs(self):
         return self._train_ds
@@ -162,6 +164,9 @@ class DataManager:
     
     def getTestDs(self):
         return self._test_ds
+
+    def getLeadDS(self):
+        return self.lea_ds
 
     @staticmethod
     def oneHotConverter(raw):
@@ -178,39 +183,41 @@ class DataManager:
         return out
 
     @staticmethod
-    def splitData(arr_len, ratio, seed=-1):
-        """
-        Split data to test and train with numpy random seeding.
-        :param arr_len: length of array need split
-        :param ratio: 0-1 of item to split, round down to first array
-        :param seed: use to control random state -- set to -1 to disable
-        :return: tuple of 2 arrays contain index that has been split
-        """
-        # set random state if used
-        if seed != -1:
-            rng = np.random.default_rng(seed)
-            shuffled_indices = rng.permutation(arr_len)
-        else:
-            shuffled_indices = np.random.permutation(arr_len)
-        # split
-        split_index = int(arr_len * ratio)
-        return shuffled_indices[:split_index], shuffled_indices[split_index:]
+    def cosin_feature_similarity(df, feat1, feat2):
+        # perform cosin similarity on 2 feature and return array
+        pre = np.vstack(df[feat1].values)
+        post = np.vstack(df[feat2].values)
+        out = np.zeros(len(pre))
+        for c, _ in enumerate(out):
+            out[c] = np.dot(pre[c], post[c])/(np.linalg.norm(pre[c]) * np.linalg.norm(post[c]))
+        return out
 
     @staticmethod
     def processFromDf(raw_df, skip_y=0):
+        raw_df['fweight_cosin'] = DataManager.cosin_feature_similarity(
+            raw_df, 'pre_feature_weights', 'post_feature_weights')
+        raw_df['morp_cosin'] = DataManager.cosin_feature_similarity(
+            raw_df, 'pre_morph_embeddings', 'post_morph_embeddings')
+
         indat1 = np.copy(raw_df[['adp_dist', 'pre_oracle', 'post_oracle', 'pre_skeletal_distance_to_soma',
-                                 'post_skeletal_distance_to_soma']].values)
+                                 'post_skeletal_distance_to_soma', 'pre_test_score', 'post_test_score', 'fweight_cosin',
+                                 'morp_cosin']].values)
+        # brain area
         raw = raw_df.pre_brain_area.values
         indat2 = DataManager.oneHotConverter(raw)
-
         raw = raw_df.post_brain_area.values
         indat3 = DataManager.oneHotConverter(raw)
-
+        # compartment
         raw = raw_df.compartment.values
         indat4 = DataManager.oneHotConverter(raw)
 
+        # morph embedding
         indat5 = np.vstack(raw_df.pre_morph_embeddings.values)
         indat6 = np.vstack(raw_df.post_morph_embeddings.values)
+
+        # feature weight
+        indat7 = np.stack(raw_df.pre_feature_weights)
+        indat8 = np.stack(raw_df.post_feature_weights)
 
         labels = None
         if not skip_y:
@@ -218,13 +225,13 @@ class DataManager:
             labels = DataManager.oneHotConverter(raw)[:, 1]
 
         # Normalization
-        # transform bulk data
+        # transform bulk data  -- try forcing to magnitude of 10
         arr = np.transpose(indat1)
-        arr[0] = arr[0] / 500  # scale down large value
-        arr[1] = arr[1] * 10  # upscale
-        arr[2] = arr[2] * 10  # upscale
-        arr[3] = arr[3] / 250000  # scale down large value
-        arr[4] = arr[4] / 180000  # scale down large value`
+        arr[0] = arr[0] / 5000  # scale down large value
+        # arr[1] = arr[1] * 10  # upscale
+        # arr[2] = arr[2] * 10  # upscale
+        arr[3] = arr[3] / 2000000  # scale down large value
+        arr[4] = arr[4] / 2000000  # scale down large value`
         return (indat1, indat2, indat3, indat4, indat5, indat6), labels
 
     def makeDs(self, features_list, labels, index=None):
