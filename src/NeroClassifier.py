@@ -7,14 +7,14 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
 
-SEED = 692000
-BATCH_SIZE = 32
-EPOCHS = 20
+SEED = 7
+BATCH_SIZE = 16
+EPOCHS = 200
 BUFFER_SIZE = 10000
 STEP_PER_EPOCH = 64
-TRN = 0.6
-VAL = 0.2
-TST = 0.2
+TRN = 0.8
+VAL = 0.1
+TST = 0.1
 
 METRICS = [
     keras.metrics.BinaryCrossentropy(name='cross entropy'),  # same as model's loss
@@ -29,9 +29,9 @@ METRICS = [
     keras.metrics.AUC(name='auc'),
     keras.metrics.AUC(name='prc', curve='PR'),  # precision-recall curve
 ]
-checkpoint_path = 'resource/checkpoint/smater.ckpt'
+checkpoint_path = 'resource/checkpoint/smater2.ckpt'
 
-early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_prc', verbose=1, patience=10, mode='max',
+early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_auc', verbose=1, patience=10, mode='max',
                                                   restore_best_weights=True)
 keras.utils.set_random_seed(SEED)
 
@@ -85,55 +85,56 @@ datamanager = DataManager()
 datamanager.config(BATCH_SIZE, EPOCHS, BUFFER_SIZE)
 datamanager.load_dat_feat("./resource/feature_weights.csv")
 datamanager.load_dat_morp("./resource/morph_embeddings.csv")
-datamanager.load_dat_main("./resource/train_data.csv")
+datamanager.load_dat_main("./resource/train_data2.csv")
 datamanager.prepTrainValTest(TRN, VAL, TST, SEED)
 # Create a model
 in0 = keras.layers.Input(shape=(9,), dtype='float32', name='Feature 0')
 in1 = keras.layers.Input(shape=(3,), dtype='float32', name='Feature 1')
 in2 = keras.layers.Input(shape=(3,), dtype='float32', name='Feature 2')
 in3 = keras.layers.Input(shape=(7,), dtype='float32', name='Feature 3')
-in4 = keras.layers.Input(shape=(32,), dtype='float32', name='Feature 4')
-in5 = keras.layers.Input(shape=(32,), dtype='float32', name='Feature 5')
-# in6 = keras.layers.Input(shape=(512,), dtype='float32', name='Feature 6')
-# in7 = keras.layers.Input(shape=(512,), dtype='float32', name="Feature 7")
-merged = keras.layers.Concatenate(axis=1)([in0, in1, in2, in3, in4, in5])
+# in4 = keras.layers.Input(shape=(8,), dtype='float32', name='Feature 4')
+# in5 = keras.layers.Input(shape=(8,), dtype='float32', name='Feature 5')
+# in6 = keras.layers.Input(shape=(12,), dtype='float32', name='Feature 6')
+# in7 = keras.layers.Input(shape=(12,), dtype='float32', name="Feature 7")
+merged = keras.layers.Concatenate(axis=1)([in0, in1, in2, in3])
 dense1 = keras.layers.Dense(64, activation=keras.activations.gelu)(merged)
-drop1 = keras.layers.Dropout(0.2)(dense1)
-dense2 = keras.layers.Dense(48, activation=keras.activations.gelu)(drop1)
-drop2 = keras.layers.Dropout(0.2)(dense2)
+drop1 = keras.layers.Dropout(0.25)(dense1)
+dense2 = keras.layers.Dense(64, activation=keras.activations.gelu)(drop1)
+drop2 = keras.layers.Dropout(0.25)(dense2)
 dense3 = keras.layers.Dense(32, activation=keras.activations.gelu)(drop2)
-output = keras.layers.Dense(1, activation=keras.activations.sigmoid)(dense2)
-model = keras.models.Model([in0, in1, in2, in3, in4, in5], output)
+# drop3 = keras.layers.Dropout(0.2)(dense3)
+output = keras.layers.Dense(1, activation=keras.activations.sigmoid)(dense3)
+model = keras.models.Model([in0, in1, in2, in3], output)
 
 plot_model(model, to_file='model_plot.png', show_shapes=True, show_layer_names=True)
-optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)  # Set the constant learning rate
+optimizer = tf.keras.optimizers.Adam(learning_rate=0.0005)  # Set the constant learning rate
 loss = tf.keras.losses.BinaryFocalCrossentropy(
     apply_class_balancing=False, alpha=0.5, gamma=8.0)
 
-model.compile(optimizer=optimizer, loss=loss, metrics=METRICS)  # Using binary cross-entropy loss
+model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=METRICS)  # Using binary cross-entropy loss
 # model.compile(optimizer='adam', loss=contrastive_loss, metrics=METRICS)  # Using contrastive loss
 
 # load store weight if want to continue
-model.load_weights(checkpoint_path)
+# model.load_weights(checkpoint_path)
 
 # Train the model
-# history = model.fit(
-#     datamanager.getTrainDs(),
-#     epochs=EPOCHS,
-#     steps_per_epoch=STEP_PER_EPOCH,
-#     callbacks=[early_stopping, cp_callback],
-#     validation_data=(datamanager.getValDs()))
-# plot_metrics(history)
+history = model.fit(
+    datamanager.getTrainDs(),
+    epochs=EPOCHS,
+    steps_per_epoch=STEP_PER_EPOCH,
+    callbacks=[early_stopping, cp_callback],
+    validation_data=(datamanager.getValDs()))
+plot_metrics(history)
 
-# hist_val = model.evaluate(datamanager.getValDs())
-# print("[{} {}]\n[{} {}]".format(hist_val[3], hist_val[4], hist_val[5], hist_val[6]))
-# print((hist_val[3] / (hist_val[3] + hist_val[6]) + hist_val[5] / (hist_val[5] + hist_val[4])) / 2)
+hist_val = model.evaluate(datamanager.getValDs())
+print("[{} {}]\n[{} {}]".format(hist_val[3], hist_val[4], hist_val[5], hist_val[6]))
+print((hist_val[3] / (hist_val[3] + hist_val[6]) + hist_val[5] / (hist_val[5] + hist_val[4])) / 2)
 
 # only run this when you're ready for test
 hist_test = model.evaluate(datamanager.getTestDs())
 print("[{} {}]\n[{} {}]".format(hist_test[3], hist_test[4], hist_test[5], hist_test[6]))
 print((hist_test[3] / (hist_test[3] + hist_test[6]) + hist_test[5] / (hist_test[5] + hist_test[4])) / 2)
-
+#
 # leaderboard
 datamanager.load_dat_lboard('./resource/leaderboard_data.csv')
 datamanager.loadLeader()

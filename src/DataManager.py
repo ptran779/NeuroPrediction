@@ -2,6 +2,7 @@ import tensorflow as tf
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
+from sklearn.decomposition import PCA
 
 
 class DataManager:
@@ -199,6 +200,13 @@ class DataManager:
         raw_df['morp_cosin'] = DataManager.cosin_feature_similarity(
             raw_df, 'pre_morph_embeddings', 'post_morph_embeddings')
 
+        # PCA feature weight for pre and post
+        raw = np.vstack(raw_df['pre_feature_weights'])
+        pca = PCA(n_components=12)
+        pca_pre_feature_weight_result = pca.fit_transform(raw)
+        raw = np.vstack(raw_df['post_feature_weights'])
+        pca_post_feature_weight_result = pca.fit_transform(raw)
+
         indat1 = np.copy(raw_df[['adp_dist', 'pre_oracle', 'post_oracle', 'pre_skeletal_distance_to_soma',
                                  'post_skeletal_distance_to_soma', 'pre_test_score', 'post_test_score', 'fweight_cosin',
                                  'morp_cosin']].values)
@@ -212,12 +220,17 @@ class DataManager:
         indat4 = DataManager.oneHotConverter(raw)
 
         # morph embedding
-        indat5 = np.vstack(raw_df.pre_morph_embeddings.values)
-        indat6 = np.vstack(raw_df.post_morph_embeddings.values)
-
+        pca = PCA(n_components=8)
+        # indat5 = np.vstack(raw_df.pre_morph_embeddings.values)
+        # indat6 = np.vstack(raw_df.post_morph_embeddings.values)
+        # indat5 = pca.fit_transform(np.vstack(raw_df.pre_morph_embeddings))
+        # indat6 = pca.fit_transform(np.vstack(raw_df.post_morph_embeddings))
         # feature weight
-        indat7 = np.stack(raw_df.pre_feature_weights)
-        indat8 = np.stack(raw_df.post_feature_weights)
+        # indat7 = np.stack(raw_df.pre_feature_weights)
+        # indat8 = np.stack(raw_df.post_feature_weights)
+
+        # indat7 = pca_pre_feature_weight_result
+        # indat8 = pca_post_feature_weight_result
 
         labels = None
         if not skip_y:
@@ -232,7 +245,7 @@ class DataManager:
         # arr[2] = arr[2] * 10  # upscale
         arr[3] = arr[3] / 2000000  # scale down large value
         arr[4] = arr[4] / 2000000  # scale down large value`
-        return (indat1, indat2, indat3, indat4, indat5, indat6), labels
+        return (indat1, indat2, indat3, indat4), labels
 
     def makeDs(self, features_list, labels, index=None):
         """
