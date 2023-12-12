@@ -22,6 +22,8 @@ class DataManager:
         self._test_ds = None
         self.step_per_epoch = None
         self.lea_ds = None  # wip. just a bunch of feature for now
+        self.pre_morph_pca = None
+        self.post_morph_pca = None
 
     def config(self, batch_size: int, epochs: int, buffer_size: int):
         self.BATCH_SIZE = batch_size
@@ -137,9 +139,9 @@ class DataManager:
         train_df, val_df = train_test_split(dm_df, test_size=tmp, random_state=random_state)
 
         # process
-        f_trn, l_trn = DataManager.processFromDf(train_df)
-        f_val, l_val = DataManager.processFromDf(val_df)
-        f_tst, l_tst = DataManager.processFromDf(test_df)
+        f_trn, l_trn = self.processFromDf(train_df, trainmode=True)
+        f_val, l_val = self.processFromDf(val_df, trainmode=False)
+        f_tst, l_tst = self.processFromDf(test_df, trainmode=False)
 
         # split positive and negative sample and make them
         pos_ds = self.makeDs(f_trn, l_trn, np.where(l_trn == 1))
@@ -155,7 +157,7 @@ class DataManager:
         self._test_ds = self.makeDs(f_tst, l_tst)
 
     def loadLeader(self):
-        self.lea_ds, _ = self.processFromDf(self._dat_lboard, skip_y=1)
+        self.lea_ds, _ = self.processFromDf(self._dat_lboard, skip_y=1, trainmode=False)
 
     def getTrainDs(self):
         return self._train_ds
@@ -193,23 +195,25 @@ class DataManager:
             out[c] = np.dot(pre[c], post[c])/(np.linalg.norm(pre[c]) * np.linalg.norm(post[c]))
         return out
 
-    @staticmethod
-    def processFromDf(raw_df, skip_y=0):
+    def processFromDf(self, raw_df, skip_y=0, trainmode=True):
+        # engineering features
         raw_df['fweight_cosin'] = DataManager.cosin_feature_similarity(
             raw_df, 'pre_feature_weights', 'post_feature_weights')
         raw_df['morp_cosin'] = DataManager.cosin_feature_similarity(
             raw_df, 'pre_morph_embeddings', 'post_morph_embeddings')
 
-        # PCA feature weight for pre and post
-        raw = np.vstack(raw_df['pre_feature_weights'])
-        pca = PCA(n_components=12)
-        pca_pre_feature_weight_result = pca.fit_transform(raw)
-        raw = np.vstack(raw_df['post_feature_weights'])
-        pca_post_feature_weight_result = pca.fit_transform(raw)
+        raw_df['rf_dist'] = np.linalg.norm(raw_df[['pre_rf_x', 'pre_rf_y']].values -
+                                           raw_df[['post_rf_x', 'post_rf_y']].values, axis=1)
+
+        raw_df['neural_displacement_x'] = (raw_df.post_nucleus_x - raw_df.pre_nucleus_x) / 100000
+        raw_df['neural_displacement_y'] = (raw_df.post_nucleus_y - raw_df.pre_nucleus_y) / 100000
+        raw_df['neural_displacement_z'] = (raw_df.post_nucleus_z - raw_df.pre_nucleus_z) / 100000
+
 
         indat1 = np.copy(raw_df[['adp_dist', 'pre_oracle', 'post_oracle', 'pre_skeletal_distance_to_soma',
                                  'post_skeletal_distance_to_soma', 'pre_test_score', 'post_test_score', 'fweight_cosin',
-                                 'morp_cosin']].values)
+                                 'morp_cosin', 'rf_dist', 'neural_displacement_x', 'neural_displacement_y',
+                                 'neural_displacement_z']].values)
         # brain area
         raw = raw_df.pre_brain_area.values
         indat2 = DataManager.oneHotConverter(raw)
@@ -220,11 +224,18 @@ class DataManager:
         indat4 = DataManager.oneHotConverter(raw)
 
         # morph embedding
-        pca = PCA(n_components=8)
-        # indat5 = np.vstack(raw_df.pre_morph_embeddings.values)
-        # indat6 = np.vstack(raw_df.post_morph_embeddings.values)
-        # indat5 = pca.fit_transform(np.vstack(raw_df.pre_morph_embeddings))
-        # indat6 = pca.fit_transform(np.vstack(raw_df.post_morph_embeddings))
+        indat5 = np.vstack(raw_df.pre_morph_embeddings.values)
+        indat6 = np.vstack(raw_df.post_morph_embeddings.values)
+        # if trainmode:
+        #     pca = PCA(n_components=8)
+        #     indat5 = pca.fit_transform(np.vstack(raw_df.pre_morph_embeddings))
+        #     self.pre_morph_pca = pca.components_
+        #     indat6 = pca.fit_transform(np.vstack(raw_df.post_morph_embeddings))
+        #     self.post_morph_pca = pca.components_
+        # else:
+        #     indat5 = np.dot(np.vstack(raw_df.pre_morph_embeddings), self.pre_morph_pca.T)
+        #     indat6 = np.dot(np.vstack(raw_df.post_morph_embeddings), self.post_morph_pca.T)
+
         # feature weight
         # indat7 = np.stack(raw_df.pre_feature_weights)
         # indat8 = np.stack(raw_df.post_feature_weights)
@@ -244,8 +255,9 @@ class DataManager:
         # arr[1] = arr[1] * 10  # upscale
         # arr[2] = arr[2] * 10  # upscale
         arr[3] = arr[3] / 2000000  # scale down large value
-        arr[4] = arr[4] / 2000000  # scale down large value`
-        return (indat1, indat2, indat3, indat4), labels
+        arr[4] = arr[4] / 2000000  # scale down large value
+        arr[9] = arr[9] / 30
+        return (indat1, indat2, indat3, indat4, indat5, indat6), labels
 
     def makeDs(self, features_list, labels, index=None):
         """
